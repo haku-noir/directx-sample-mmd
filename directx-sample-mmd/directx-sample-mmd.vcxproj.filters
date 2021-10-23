@@ -27,4 +27,9 @@
       <Filter>ソース ファイル</Filter>
     </FxCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Header.hlsli">
+      <Filter>ソース ファイル</Filter>
+    </None>
+  </ItemGroup>
 </Project>

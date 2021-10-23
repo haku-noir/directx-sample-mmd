@@ -1,4 +1,8 @@
-float4 main( float4 pos : POSITION ) : SV_POSITION
+#include "Header.hlsli"
+
+Vertex main( float4 pos : POSITION )
 {
-	return pos;
+	Vertex output;
+	output.svpos = mul(mat, pos);
+	return output;
 }
