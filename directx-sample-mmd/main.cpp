@@ -4,7 +4,7 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 #include <DirectXTex.h>
-#include<d3dx12.h>
+#include <d3dx12.h>
 
 #include <tchar.h>
 #include <vector>
@@ -49,6 +49,12 @@ void EnableDebugLayer() {
     auto res = D3D12GetDebugInterface(IID_PPV_ARGS(&debugLayer));
     debugLayer->EnableDebugLayer();
     debugLayer->Release();
+}
+
+void printLog(const char* log) {
+#ifdef _DEBUG
+    std::cout << log << std::endl;
+#endif // _DEBUG
 }
 
 LRESULT WindowProcedure(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -211,31 +217,50 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         }
     }
 
+    struct PMDHeader {
+        float version;
+        char modelName[20];
+        char comment[256];
+    };
+
+    PMDHeader pmdHeader = {};
+    constexpr size_t pmdVertexSize = 38;
+    unsigned int vertNum;
+    std::vector<unsigned char> vertices;
+    {
+        auto fp = fopen("Model/èââπÉ~ÉN.pmd", "rb");
+
+        char signature[3] = {};
+        fread(signature, sizeof(signature), 1, fp);
+        fread(&pmdHeader, sizeof(pmdHeader), 1, fp);
+
+        fread(&vertNum, sizeof(vertNum), 1, fp);
+        vertices.resize(vertNum * pmdVertexSize);
+        fread(vertices.data(), vertices.size(), 1, fp);
+
+        fclose(fp);
+    }
+    OutputDebugStringA(pmdHeader.modelName);
+
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-    };
-
-    struct Vertex {
-        XMFLOAT3 pos;
-    };
-
-    std::vector<Vertex> vertices = {
-        {{-1.0f, -1.0f, 0.0f}},
-        {{-1.0f,  1.0f, 0.0f}},
-        {{ 1.0f, -1.0f, 0.0f}},
-        {{ 1.0f,  1.0f, 0.0f}},
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"BONE_NO", 0, DXGI_FORMAT_R16G16_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"WEIGHT", 0, DXGI_FORMAT_R8_UINT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"EDGE_FLG", 0, DXGI_FORMAT_R8_UINT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
     };
 
     ID3D12Resource* vertBuff = nullptr;
     {
         D3D12_HEAP_PROPERTIES heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size() * sizeof(vertices[0]));
+        D3D12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(vertices.size());
 
         res = dev->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vertBuff));
         ASSERT_RES(res, "CreateCommittedResource");
     }
     {
-        Vertex* vertMap = nullptr;
+        unsigned char* vertMap = nullptr;
         res = vertBuff->Map(0, nullptr, (void**)&vertMap);
         ASSERT_RES(res, "Map");
         std::copy(vertices.begin(), vertices.end(), vertMap);
@@ -245,8 +270,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     D3D12_VERTEX_BUFFER_VIEW vbView = {};
     {
         vbView.BufferLocation = vertBuff->GetGPUVirtualAddress();
-        vbView.StrideInBytes = sizeof(vertices[0]);
-        vbView.SizeInBytes = static_cast<UINT>(vertices.size() * sizeof(vertices[0]));;
+        vbView.StrideInBytes = pmdVertexSize;
+        vbView.SizeInBytes = static_cast<UINT>(vertices.size());;
     }
 
     std::vector<unsigned short> indices = {
@@ -421,7 +446,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         gpipelineDesc.InputLayout.NumElements = _countof(inputLayout);
 
         gpipelineDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
-        gpipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        gpipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
 
         gpipelineDesc.NumRenderTargets = 1;
         gpipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -469,11 +494,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
     float angle = 0.0f;
     auto worldMat = XMMatrixRotationY(angle);
-    XMFLOAT3 eye(0, 0, -5);
-    XMFLOAT3 target(0, 0, 0);
+    XMFLOAT3 eye(0, 10, -15);
+    XMFLOAT3 target(0, 10, 0);
     XMFLOAT3 up(0, 1, 0);
     auto viewMat = XMMatrixLookAtLH(XMLoadFloat3(&eye), XMLoadFloat3(&target), XMLoadFloat3(&up));
-    auto projMat = XMMatrixPerspectiveFovLH(XM_PIDIV2, static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT), 1.0f, 10.0f);
+    auto projMat = XMMatrixPerspectiveFovLH(XM_PIDIV2, static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT), 1.0f, 100.0f);
 
     while (true) {
         if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -485,7 +510,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
             break;
         }
 
-        angle += 0.1f;
+        angle += 0.01f;
         worldMat = XMMatrixRotationY(angle);
         *matrixMap = mat * worldMat * viewMat * projMat;
 
@@ -499,7 +524,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
             descHandle.ptr += descHeapSize;
         }
 
-        cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
         cmdList->IASetVertexBuffers(0, 1, &vbView);
         cmdList->IASetIndexBuffer(&ibView);
 
@@ -522,7 +547,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
             cmdList->ClearRenderTargetView(descHandle, clearColor, 0, nullptr);
         }
 
-        cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+        cmdList->DrawInstanced(vertNum, 1, 0, 0);
 
         barrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
@@ -537,8 +562,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         if (fence->GetCompletedValue() != fenceVal) {
             auto event = CreateEvent(nullptr, false, false, nullptr);
             fence->SetEventOnCompletion(fenceVal, event);
-            WaitForSingleObject(event, INFINITE);
-            CloseHandle(event);
+            if (event != 0) {
+                WaitForSingleObject(event, INFINITE);
+                CloseHandle(event);
+            }
         }
 
         cmdAllocator->Reset();
