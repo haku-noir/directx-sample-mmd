@@ -217,6 +217,46 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         }
     }
 
+    ID3D12Resource* depthBuff = nullptr;
+    {
+        D3D12_HEAP_PROPERTIES heapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+
+        D3D12_RESOURCE_DESC resDesc = {};
+        resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resDesc.Width = WINDOW_WIDTH;
+        resDesc.Height = WINDOW_HEIGHT;
+        resDesc.DepthOrArraySize = 1;
+        resDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        resDesc.SampleDesc.Count = 1;
+        resDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+        D3D12_CLEAR_VALUE clearValue = {};
+        clearValue.DepthStencil.Depth = 1.0f;
+        clearValue.Format = DXGI_FORMAT_D32_FLOAT;
+
+        res = dev->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, nullptr, IID_PPV_ARGS(&depthBuff));
+        ASSERT_RES(res, "CreateCommittedResource");
+    }
+
+    ID3D12DescriptorHeap* dsvHeap = nullptr;
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+        heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        heapDesc.NodeMask = 0;
+        heapDesc.NumDescriptors = 1;
+        heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+        res = dev->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&dsvHeap));
+        ASSERT_RES(res, "CreateDescriptorHeap");
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+        dev->CreateDepthStencilView(depthBuff, &dsvDesc, dsvHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+
     struct PMDHeader {
         float version;
         char modelName[20];
@@ -452,6 +492,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         gpipelineDesc.NumRenderTargets = 1;
         gpipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 
+        gpipelineDesc.DepthStencilState.DepthEnable = true;
+        gpipelineDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        gpipelineDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+        gpipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+
         gpipelineDesc.SampleDesc.Count = 1;
         gpipelineDesc.SampleDesc.Quality = 0;
 
@@ -542,10 +587,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         {
             auto descHandle = rtvHeap->GetCPUDescriptorHandleForHeapStart();
             descHandle.ptr += bbIdx * rtvHeapSize;
-            cmdList->OMSetRenderTargets(1, &descHandle, true, nullptr);
+            auto dsvDescHandle = dsvHeap->GetCPUDescriptorHandleForHeapStart();
+            cmdList->OMSetRenderTargets(1, &descHandle, true, &dsvDescHandle);
 
             float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
             cmdList->ClearRenderTargetView(descHandle, clearColor, 0, nullptr);
+            cmdList->ClearDepthStencilView(dsvDescHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
         }
 
         cmdList->DrawIndexedInstanced(idxNum, 1, 0, 0, 0);

@@ -9,5 +9,8 @@ Vertex main(
 ){
 	Vertex output;
 	output.svpos = mul(mat, pos);
+	output.normal = normal;
+	output.uv = uv;
+
 	return output;
 }
