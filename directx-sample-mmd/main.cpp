@@ -225,8 +225,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
     PMDHeader pmdHeader = {};
     constexpr size_t pmdVertexSize = 38;
-    unsigned int vertNum;
+    UINT vertNum;
     std::vector<unsigned char> vertices;
+    UINT idxNum;
+    std::vector<unsigned short> indices;
     {
         auto fp = fopen("Model/èââπÉ~ÉN.pmd", "rb");
 
@@ -238,9 +240,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         vertices.resize(vertNum * pmdVertexSize);
         fread(vertices.data(), vertices.size(), 1, fp);
 
+        fread(&idxNum, sizeof(idxNum), 1, fp);
+        indices.resize(idxNum);
+        fread(indices.data(), indices.size() * sizeof(indices[0]), 1, fp);
+
         fclose(fp);
     }
-    OutputDebugStringA(pmdHeader.modelName);
+    printLog(pmdHeader.modelName);
 
     D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D12_APPEND_ALIGNED_ELEMENT, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -273,11 +279,6 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         vbView.StrideInBytes = pmdVertexSize;
         vbView.SizeInBytes = static_cast<UINT>(vertices.size());;
     }
-
-    std::vector<unsigned short> indices = {
-        0, 1, 2,
-        2, 1, 3
-    };
 
     ID3D12Resource* idxBuff = nullptr;
     {
@@ -446,7 +447,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         gpipelineDesc.InputLayout.NumElements = _countof(inputLayout);
 
         gpipelineDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
-        gpipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+        gpipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 
         gpipelineDesc.NumRenderTargets = 1;
         gpipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -524,7 +525,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
             descHandle.ptr += descHeapSize;
         }
 
-        cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_POINTLIST);
+        cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmdList->IASetVertexBuffers(0, 1, &vbView);
         cmdList->IASetIndexBuffer(&ibView);
 
@@ -547,7 +548,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
             cmdList->ClearRenderTargetView(descHandle, clearColor, 0, nullptr);
         }
 
-        cmdList->DrawInstanced(vertNum, 1, 0, 0);
+        cmdList->DrawIndexedInstanced(idxNum, 1, 0, 0, 0);
 
         barrierDesc.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrierDesc.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
